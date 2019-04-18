@@ -1,79 +1,71 @@
 #[macro_use]
 extern crate vulkano;
-
-#[macro_use]
-extern crate vulkano_shader_derive;
+extern crate vulkano_shaders;
 extern crate winit;
 extern crate vulkano_win;
 
-use vulkano_win::VkSurfaceBuild;
-
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::DynamicState;
-use vulkano::device::Device;
-use vulkano::framebuffer::Framebuffer;
-use vulkano::framebuffer::Subpass;
-use vulkano::instance::Instance;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::device::{Device, DeviceExtensions};
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
+use vulkano::image::SwapchainImage;
+use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::swapchain;
-use vulkano::swapchain::PresentMode;
-use vulkano::swapchain::SurfaceTransform;
-use vulkano::swapchain::Swapchain;
-use vulkano::swapchain::AcquireError;
-use vulkano::swapchain::SwapchainCreationError;
-use vulkano::sync::now;
-use vulkano::sync::GpuFuture;
+use vulkano::sync::{GpuFuture, FlushError};
+use vulkano::sync;
+
+use vulkano_win::VkSurfaceBuild;
+
+use winit::{EventsLoop, Window, WindowBuilder, Event, WindowEvent};
 
 use std::sync::Arc;
 
 fn main() {
     let instance = {
         let extensions = vulkano_win::required_extensions();
-        Instance::new(None, &extensions, None).expect("failed to create Vulkan instance")
+        Instance::new(None, &extensions, None).unwrap()
     };
 
-    let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
-                            .next().expect("no device available");
-    println!("Using device: {} (type: {:?}) [Version: {}]", physical.name(), physical.ty(), physical.api_version());
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+    println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-    let mut events_loop = winit::EventsLoop::new();
-    let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+    let mut events_loop = EventsLoop::new();
+    let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+    let window = surface.window();
 
     let queue_family = physical.queue_families().find(|&q| {
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
-    }).expect("couldn't find a graphical queue family");
+    }).unwrap();
 
-    let (device, mut queues) = {
-        let device_ext = vulkano::device::DeviceExtensions {
-            khr_swapchain: true,
-            .. vulkano::device::DeviceExtensions::none()
-        };
-
-        Device::new(physical, physical.supported_features(), &device_ext,
-                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
-    };
+    let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
+    let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
+        [(queue_family, 0.5)].iter().cloned()).unwrap();
 
     let queue = queues.next().unwrap();
 
-    let mut dimensions;
+    let (mut swapchain, images) = {
+        let caps = surface.capabilities(physical).unwrap();
 
-    let (mut swapchain, mut images) = {
-        let caps = surface.capabilities(physical)
-                         .expect("failed to get surface capabilities");
-
-        dimensions = caps.current_extent.unwrap_or([1024, 768]);
+        let usage = caps.supported_usage_flags;
 
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         let format = caps.supported_formats[0].0;
 
+        let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
+            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+            [dimensions.0, dimensions.1]
+        } else {
+            return;
+        };
+
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                       dimensions, 1, caps.supported_usage_flags, &queue,
-                       SurfaceTransform::Identity, alpha, PresentMode::Fifo, true,
-                       None).expect("failed to create swapchain")
+            initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
+            PresentMode::Fifo, true, None).unwrap()
+
     };
 
     let vertex_buffer = {
@@ -85,45 +77,43 @@ fn main() {
             Vertex { position: [-0.5, -0.25] },
             Vertex { position: [0.0, 0.5] },
             Vertex { position: [0.25, -0.1] }
-        ].iter().cloned()).expect("failed to create buffer")
+        ].iter().cloned()).unwrap()
     };
 
     mod vs {
-        #[derive(VulkanoShader)]
-        #[ty = "vertex"]
-        #[src = "
-            #version 450
+        vulkano_shaders::shader!{
+            ty: "vertex",
+            src: "
+#version 450
 
-            layout(location = 0) in vec2 position;
+layout(location = 0) in vec2 position;
 
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }
-        "]
-        #[allow(dead_code)]
-        struct Dummy;
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+}"
+        }
     }
 
     mod fs {
-        #[derive(VulkanoShader)]
-        #[ty = "fragment"]
-        #[src = "
-            #version 450
+        vulkano_shaders::shader!{
+            ty: "fragment",
+            src: "
+#version 450
 
-            layout(location = 0) out vec4 f_color;
+layout(location = 0) out vec4 f_color;
 
-            void main() {
-                f_color = vec4(1.0, 0.0, 0.0, 1.0);
-            }
-        "]
-        #[allow(dead_code)]
-        struct Dummy;
+void main() {
+    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+}
+"
+        }
     }
 
-    let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
-    let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
+    let vs = vs::Shader::load(device.clone()).unwrap();
+    let fs = fs::Shader::load(device.clone()).unwrap();
 
-    let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+    let render_pass = Arc::new(single_pass_renderpass!(
+        device.clone(),
         attachments: {
             color: {
                 load: Clear,
@@ -148,60 +138,39 @@ fn main() {
         .build(device.clone())
         .unwrap());
 
-    let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
-    let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
 
-    let mut dynamic_state = DynamicState {
-        line_width: None,
-        viewports: Some(vec![Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0 .. 1.0,
-        }]),
-        scissors: None,
-    };
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+
+    let mut recreate_swapchain = false;
+
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
 
         if recreate_swapchain {
-            dimensions = surface.capabilities(physical)
-                        .expect("failed to get surface capabilities")
-                        .current_extent.unwrap();
+            let dimensions = if let Some(dimensions) = window.get_inner_size() {
+                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+                [dimensions.0, dimensions.1]
+            } else {
+                return;
+            };
 
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
-                Err(SwapchainCreationError::UnsupportedDimensions) => {
-                    continue;
-                },
+                Err(SwapchainCreationError::UnsupportedDimensions) => continue,
                 Err(err) => panic!("{:?}", err)
             };
 
             swapchain = new_swapchain;
-            images = new_images;
 
-            framebuffers = None;
-
-            dynamic_state.viewports = Some(vec![Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                depth_range: 0.0 .. 1.0,
-            }]);
+            framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
 
             recreate_swapchain = false;
         }
 
-        if framebuffers.is_none() {
-            framebuffers = Some(images.iter().map(|image| {
-                Arc::new(Framebuffer::start(render_pass.clone())
-                         .add(image.clone()).unwrap()
-                         .build().unwrap())
-            }).collect::<Vec<_>>());
-        }
-
-        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(),
-                                                                              None) {
+        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 recreate_swapchain = true;
@@ -210,13 +179,12 @@ fn main() {
             Err(err) => panic!("{:?}", err)
         };
 
+        let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
+
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-            .begin_render_pass(framebuffers.as_ref().unwrap()[image_num].clone(), false,
-                               vec![[0.0, 0.0, 1.0, 1.0].into()])
+            .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
             .unwrap()
-            .draw(pipeline.clone(),
-                  &dynamic_state,
-                  vertex_buffer.clone(), (), ())
+            .draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ())
             .unwrap()
             .end_render_pass()
             .unwrap()
@@ -231,23 +199,47 @@ fn main() {
             Ok(future) => {
                 previous_frame_end = Box::new(future) as Box<_>;
             }
-            Err(vulkano::sync::FlushError::OutOfDate) => {
+            Err(FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
             }
         }
 
         let mut done = false;
         events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
+                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
+                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
                 _ => ()
             }
         });
         if done { return; }
     }
+}
+
+fn window_size_dependent_setup(
+    images: &[Arc<SwapchainImage<Window>>],
+    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    dynamic_state: &mut DynamicState
+) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+    let dimensions = images[0].dimensions();
+
+    let viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+        depth_range: 0.0 .. 1.0,
+    };
+    dynamic_state.viewports = Some(vec!(viewport));
+
+    images.iter().map(|image| {
+        Arc::new(
+            Framebuffer::start(render_pass.clone())
+                .add(image.clone()).unwrap()
+                .build().unwrap()
+        ) as Arc<FramebufferAbstract + Send + Sync>
+    }).collect::<Vec<_>>()
 }
