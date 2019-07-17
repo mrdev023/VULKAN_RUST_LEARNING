@@ -42,7 +42,7 @@ fn main() {
 
     let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
     let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
-        [(queue_family, 0.5)].iter().cloned()).unwrap();
+                                           [(queue_family, 0.5)].iter().cloned()).unwrap();
 
     let queue = queues.next().unwrap();
 
@@ -63,8 +63,8 @@ fn main() {
         };
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-            initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-            PresentMode::Fifo, true, None).unwrap()
+                       initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
+                       PresentMode::Fifo, true, None).unwrap()
 
     };
 

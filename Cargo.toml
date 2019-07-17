@@ -1,10 +1,22 @@
 [package]
-name = "tuto1_vulkano"
+name = "test"
 version = "0.1.0"
-authors = ["trexr"]
+description = "Test app"
+authors = ["Florian RICHER (MrDev023) <florian.richer@protonmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 vulkano = "0.11.0"
 vulkano-win = "0.11.0"
 vulkano-shaders = "0.11.0"
 winit = "0.18.0"
+
+[package.metadata.bundle]
+name = "Test"
+identifier = "fr.mrdev023.test"
+version = "0.1.0"
+copyright = "Copyright (c) Florian RICHER (MrDev023) 2019. All rights reserved."
+short_description = "Test app"
+long_description = "Test app"
