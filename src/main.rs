@@ -1,11 +1,8 @@
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
-use vulkano::image::SwapchainImage;
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::framebuffer::Subpass;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::viewport::Viewport;
 use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
@@ -13,18 +10,15 @@ use vulkano::sync;
 
 use vulkano_win::VkSurfaceBuild;
 
-use winit::{EventsLoop, Window, WindowBuilder, Event, WindowEvent};
+use winit::{EventsLoop, WindowBuilder, Event, WindowEvent};
 
 use std::sync::Arc;
 
-fn main() {
-    let instance = {
-        let extensions = vulkano_win::required_extensions();
-        Instance::new(None, &extensions, None).unwrap()
-    };
+mod display;
 
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
+fn main() {
+    let instance = display::vulkan::create_instance();
+    let physical = display::vulkan::create_physical_device(&instance);
 
     let mut events_loop = EventsLoop::new();
     let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
@@ -134,7 +128,7 @@ void main() {
 
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
 
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = display::window::window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
     let mut recreate_swapchain = false;
 
@@ -158,7 +152,7 @@ void main() {
             };
 
             swapchain = new_swapchain;
-            framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
+            framebuffers = display::window::window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
             recreate_swapchain = false;
         }
 
@@ -211,27 +205,4 @@ void main() {
         });
         if done { return; }
     }
-}
-
-fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: &mut DynamicState
-) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
-    let dimensions = images[0].dimensions();
-
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0 .. 1.0,
-    };
-    dynamic_state.viewports = Some(vec!(viewport));
-
-    images.iter().map(|image| {
-        Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(image.clone()).unwrap()
-                .build().unwrap()
-        ) as Arc<dyn FramebufferAbstract + Send + Sync>
-    }).collect::<Vec<_>>()
 }
