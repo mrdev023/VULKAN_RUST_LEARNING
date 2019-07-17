@@ -1,9 +1,3 @@
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-extern crate winit;
-extern crate vulkano_win;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
@@ -69,9 +63,9 @@ fn main() {
     };
 
     let vertex_buffer = {
-        #[derive(Debug, Clone)]
+        #[derive(Default, Debug, Clone)]
         struct Vertex { position: [f32; 2] }
-        impl_vertex!(Vertex, position);
+        vulkano::impl_vertex!(Vertex, position);
 
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
             Vertex { position: [-0.5, -0.25] },
@@ -112,7 +106,7 @@ void main() {
     let vs = vs::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
 
-    let render_pass = Arc::new(single_pass_renderpass!(
+    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
             color: {
@@ -144,7 +138,7 @@ void main() {
 
     let mut recreate_swapchain = false;
 
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
@@ -164,9 +158,7 @@ void main() {
             };
 
             swapchain = new_swapchain;
-
             framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
-
             recreate_swapchain = false;
         }
 
@@ -223,9 +215,9 @@ void main() {
 
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -240,6 +232,6 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }
