@@ -8,9 +8,7 @@ use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
 
-use vulkano_win::VkSurfaceBuild;
-
-use winit::{EventsLoop, WindowBuilder, Event, WindowEvent};
+use winit::{Event, WindowEvent};
 
 use std::sync::Arc;
 
@@ -19,13 +17,10 @@ mod display;
 fn main() {
     let instance = display::vulkan::create_instance();
     let physical = display::vulkan::create_physical_device(&instance);
-
-    let mut events_loop = EventsLoop::new();
-    let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-    let window = surface.window();
+    let mut frame = display::window::Frame::create_window(instance.clone());
 
     let queue_family = physical.queue_families().find(|&q| {
-        q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
+        q.supports_graphics() && frame.surface.is_supported(q).unwrap_or(false)
     }).unwrap();
 
     let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
@@ -35,7 +30,7 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical).unwrap();
+        let caps = frame.surface.capabilities(physical).unwrap();
 
         let usage = caps.supported_usage_flags;
 
@@ -43,14 +38,9 @@ fn main() {
 
         let format = caps.supported_formats[0].0;
 
-        let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
-            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-            [dimensions.0, dimensions.1]
-        } else {
-            return;
-        };
+        let initial_dimensions = frame.get_physical_dimensions().unwrap();
 
-        Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
+        Swapchain::new(device.clone(), frame.surface.clone(), caps.min_image_count, format,
                        initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
                        PresentMode::Fifo, true, None).unwrap()
 
@@ -138,12 +128,7 @@ void main() {
         previous_frame_end.cleanup_finished();
 
         if recreate_swapchain {
-            let dimensions = if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-                [dimensions.0, dimensions.1]
-            } else {
-                return;
-            };
+            let dimensions = frame.get_physical_dimensions().unwrap();
 
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
@@ -196,7 +181,7 @@ void main() {
         }
 
         let mut done = false;
-        events_loop.poll_events(|ev| {
+        frame.events_loop.poll_events(|ev| {
             match ev {
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
                 Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
