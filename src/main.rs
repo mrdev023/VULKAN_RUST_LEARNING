@@ -1,9 +1,8 @@
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
-use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::Subpass;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, SwapchainCreationError};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -18,33 +17,8 @@ fn main() {
     let instance = display::vulkan::create_instance();
     let physical = display::vulkan::create_physical_device(&instance);
     let mut frame = display::window::Frame::create_window(instance.clone(), "Test", 800, 600);
-
-    let queue_family = physical.queue_families().find(|&q| {
-        q.supports_graphics() && frame.surface.is_supported(q).unwrap_or(false)
-    }).unwrap();
-
-    let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
-    let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
-                                           [(queue_family, 0.5)].iter().cloned()).unwrap();
-
-    let queue = queues.next().unwrap();
-
-    let (mut swapchain, images) = {
-        let caps = frame.surface.capabilities(physical).unwrap();
-
-        let usage = caps.supported_usage_flags;
-
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-
-        let format = caps.supported_formats[0].0;
-
-        let initial_dimensions = frame.get_physical_dimensions().unwrap();
-
-        Swapchain::new(device.clone(), frame.surface.clone(), caps.min_image_count, format,
-                       initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-                       PresentMode::Fifo, true, None).unwrap()
-
-    };
+    let (device, queue) = display::vulkan::get_queue_and_device(physical, &frame);
+    let (mut swapchain, images) = display::vulkan::create_swapchain(physical, &device, &queue, &frame);
 
     let vertex_buffer = {
         #[derive(Default, Debug, Clone)]
