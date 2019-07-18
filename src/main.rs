@@ -17,7 +17,7 @@ mod display;
 fn main() {
     let instance = display::vulkan::create_instance();
     let physical = display::vulkan::create_physical_device(&instance);
-    let mut frame = display::window::Frame::create_window(instance.clone());
+    let mut frame = display::window::Frame::create_window(instance.clone(), "Test", 800, 600);
 
     let queue_family = physical.queue_families().find(|&q| {
         q.supports_graphics() && frame.surface.is_supported(q).unwrap_or(false)
@@ -61,29 +61,14 @@ fn main() {
     mod vs {
         vulkano_shaders::shader!{
             ty: "vertex",
-            src: "
-#version 450
-
-layout(location = 0) in vec2 position;
-
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}"
+            path: "shaders/main.vert"
         }
     }
 
     mod fs {
         vulkano_shaders::shader!{
             ty: "fragment",
-            src: "
-#version 450
-
-layout(location = 0) out vec4 f_color;
-
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-"
+            path: "shaders/main.frag"
         }
     }
 

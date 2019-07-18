@@ -5,22 +5,26 @@ use vulkano::command_buffer::DynamicState;
 use vulkano::swapchain::Surface;
 use vulkano::instance::Instance;
 use vulkano_win::VkSurfaceBuild;
-use winit::{EventsLoop, WindowBuilder, Window};
+use winit::{EventsLoop, WindowBuilder, Window, dpi::LogicalSize};
 use std::sync::Arc;
 use std::option::Option;
 
 pub struct Frame {
     pub events_loop : EventsLoop,
-    pub surface : Arc<Surface<Window>>
+    pub surface : Arc<Surface<Window>>,
+    pub width : u32,
+    pub height : u32
 }
 
 impl Frame {
-    pub fn create_window(instance : Arc<Instance>) -> Frame {
+    pub fn create_window(instance : Arc<Instance>, title : &str, width : u32, height : u32) -> Frame {
         let events_loop = EventsLoop::new();
-        let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance).unwrap();
+        let surface = WindowBuilder::new().with_title(title).with_dimensions(LogicalSize::new(f64::from(width), f64::from(height))).build_vk_surface(&events_loop, instance).unwrap();
         Frame {
             events_loop,
-            surface
+            surface,
+            width,
+            height
         }
     }
 
