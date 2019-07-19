@@ -15,9 +15,9 @@ mod display;
 
 fn main() {
     let instance = display::vulkan::create_instance();
-    let physical = display::vulkan::create_physical_device(&instance);
+    let physical = display::vulkan::get_physical_device(&instance);
     let mut frame = display::window::Frame::create_window(instance.clone(), "Test", 800, 600);
-    let (device, queue) = display::vulkan::get_queue_and_device(physical, &frame);
+    let (device, queue) = display::vulkan::create_queue_and_device_from_physical_device(physical, &frame);
     let (mut swapchain, images) = display::vulkan::create_swapchain(physical, &device, &queue, &frame);
 
     let vertex_buffer = {
