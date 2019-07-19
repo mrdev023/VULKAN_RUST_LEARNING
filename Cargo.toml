@@ -16,3 +16,17 @@ winit = "0.19"
 [package.metadata.bundle]
 identifier = "fr.mrdev023.test"
 copyright = "Copyright (c) Florian RICHER (MrDev023) 2019. All rights reserved."
+
+[package.metadata.android]
+package_name = "com.author-name.my-android-app"
+label = "My Android App"
+fullscreen = false
+build_targets = [ "arm-linux-androideabi", "armv7-linux-androideabi" ]
+
+[package.metadata.android.application_attributes]
+"android:debuggable" = "true"
+"android:hardwareAccelerated" = "true"
+
+[package.metadata.android.activity_attributes]
+"android:screenOrientation" = "unspecified"
+"android:uiOptions" = "none"
